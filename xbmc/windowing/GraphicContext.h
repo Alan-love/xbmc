@@ -9,20 +9,15 @@
 #pragma once
 
 #include "Resolution.h"
-#include "rendering/RenderSystem.h"
+#include "rendering/RenderSystemTypes.h"
 #include "threads/CriticalSection.h"
 #include "utils/ColorUtils.h"
 #include "utils/Geometry.h" // for CRect/CPoint
 #include "utils/TransformMatrix.h" // for the members m_guiTransform etc.
 
-#include <map>
 #include <stack>
 #include <string>
 #include <vector>
-
-// required by clients
-#include "ServiceBroker.h"
-#include "WinSystem.h"
 
 #define D3DPRESENTFLAG_INTERLACED   1
 #define D3DPRESENTFLAG_WIDESCREEN   2
@@ -55,6 +50,27 @@ enum AdjustRefreshRate
   ADJUST_REFRESHRATE_ALWAYS,
   ADJUST_REFRESHRATE_ON_STARTSTOP,
   ADJUST_REFRESHRATE_ON_START,
+};
+
+enum RENDER_ORDER
+{
+  RENDER_ORDER_ALL_BACK_TO_FRONT = 0,
+  RENDER_ORDER_BACK_TO_FRONT,
+  RENDER_ORDER_FRONT_TO_BACK,
+};
+
+enum class STENCIL_LAYER
+{
+  LAYER0 = 0,
+  LAYER1 = 1,
+  LAYER2 = 2,
+  LAYER3 = 3,
+  LAYER4 = 4,
+  LAYER5 = 5,
+  LAYER6 = 6,
+  LAYER7 = 7,
+  NONE,
+  INVALID,
 };
 
 class CGraphicContext : public CCriticalSection
@@ -99,8 +115,33 @@ public:
   void ResetScreenParameters(RESOLUTION res);
   void CaptureStateBlock();
   void ApplyStateBlock();
-  void Clear(UTILS::COLOR::Color color = 0);
+  /*! \brief Invalidates color buffer, clears the depth buffer (if used). 
+   Will result in undefined color buffer values which will have to be 
+   repainted. Has to be called at the beginning of a frame.
+   */
+  void Clear();
+  /*! \brief Clears the depth buffer (if used) and the color buffer. Guaranties
+   a defined color buffer value. Has to be called at the beginning of a frame.
+   \param color the specified color.
+   */
+  void Clear(KODI::UTILS::COLOR::Color color);
   void GetAllowedResolutions(std::vector<RESOLUTION> &res);
+  /*! \brief Sets the direction of the current rendering pass.
+   \param renderOrder direction of the pass
+   */
+  void SetRenderOrder(RENDER_ORDER renderOrder);
+  /*! \brief Returns the current render order mode
+   \returns RENDER_ORDER returns the mode
+   */
+  RENDER_ORDER GetRenderOrder() { return m_renderOrder; }
+  /*! \brief Resets the z-depth. Layer 0 and 1 are reserved as presentation (video) layer.
+   */
+  void ResetDepth() { m_layer = 2; }
+  /*! \brief Reserve layers for the caller to use
+   \param addLayers number of layers needed
+   \returns uint32_t returns the absolute layer height
+   */
+  uint32_t GetDepth(uint32_t addLayers = 2);
 
   /* \brief Get UI scaling information from a given resolution to the screen resolution.
    Takes account of overscan and UI zooming.
@@ -122,17 +163,28 @@ public:
   const TransformMatrix &GetGUIMatrix() const;
   float GetGUIScaleX() const;
   float GetGUIScaleY() const;
-  UTILS::COLOR::Color MergeAlpha(UTILS::COLOR::Color color) const;
+  KODI::UTILS::COLOR::Color MergeAlpha(KODI::UTILS::COLOR::Color color) const;
+  KODI::UTILS::COLOR::Color MergeColor(KODI::UTILS::COLOR::Color color) const;
   void SetOrigin(float x, float y);
   void RestoreOrigin();
   void SetCameraPosition(const CPoint &camera);
-  void SetStereoView(RENDER_STEREO_VIEW view);
-  RENDER_STEREO_VIEW GetStereoView()  { return m_stereoView; }
-  void SetStereoMode(RENDER_STEREO_MODE mode) { m_nextStereoMode = mode; }
-  RENDER_STEREO_MODE GetStereoMode()  { return m_stereoMode; }
+  void SetStereoView(RenderStereoView view);
+  RenderStereoView GetStereoView() { return m_stereoView; }
+  void SetStereoMode(RenderStereoMode mode) { m_nextStereoMode = mode; }
+  RenderStereoMode GetStereoMode() { return m_stereoMode; }
   void RestoreCameraPosition();
   void SetStereoFactor(float factor);
   void RestoreStereoFactor();
+  /*! \brief Gets the depth information of the current transform matrix
+   \param depthOffset adds an offset to the current depth
+   \returns float normalized -1 to 1
+   */
+  float GetTransformDepth(int32_t depthOffset = 0);
+  /*! \brief Gets the (normalized) depth information 
+   \param depth to be normalized
+   \returns float normalized -1 to 1
+   */
+  float GetNormalizedDepth(uint32_t depth);
   /*! \brief Set a region in which to clip all rendering
    Anything that is rendered after setting a clip region will be clipped so that no part renders
    outside of the clip region.  Successive calls to SetClipRegion intersect the clip region, which
@@ -162,6 +214,7 @@ public:
   void RestoreClipRegion();
   void ClipRect(CRect &vertex, CRect &texture, CRect *diffuse = NULL);
   CRect GetClipRegion();
+  bool HasClipRegion() const { return !m_clipRegions.empty(); }
   void AddGUITransform();
   TransformMatrix AddTransform(const TransformMatrix &matrix);
   void SetTransform(const TransformMatrix &matrix);
@@ -177,6 +230,29 @@ public:
   //@todo move those somewhere else
   const std::string& GetMediaDir() const;
   void SetMediaDir(const std::string& strMediaDir);
+
+  void SetTransferPQ(bool PQ) { m_isTransferPQ = PQ; }
+  bool IsTransferPQ() const { return m_isTransferPQ; }
+
+  /*! \brief Reserves an aabb to which a stencil drawcall should be made. Returns the bucket (or rather layer)
+   to which the drawcall has to be applied to. If all 8 available buckets are full for a given area, it will
+   signal so. 
+
+   \param newRect the requested area the element wants to render to
+   \sa returns an available layer, or signals that all available buckets are full
+   */
+  STENCIL_LAYER AddStencilRectToBucket(const CRect& newRect);
+  /*! \brief Clears all stencil buckets. Should be called at the start of a new frame */
+  void ClearStencilBuckets();
+
+  /*! \brief Pushes a new stencil layer to the stack. Child elements should render using this layer.
+   \param stencilLayer the layer which to be added.
+   */
+  void SetStencilLayer(const STENCIL_LAYER stencilLayer);
+  /*! \brief Pops the current stencil layer */
+  void RestoreStencilLayer();
+  /*! \brief Returns the current stencil layer */
+  STENCIL_LAYER GetStencilLayer();
 
 protected:
 
@@ -198,6 +274,9 @@ protected:
   RESOLUTION_INFO m_windowResolution;
   std::stack<CPoint> m_cameras;
   std::stack<CPoint> m_origins;
+  std::stack<STENCIL_LAYER> m_stencilLayers;
+
+  std::array<std::vector<CRect>, 8> m_stencilBuckets;
   std::stack<CRect> m_clipRegions;
   std::stack<float> m_stereoFactors;
   std::stack<CRect> m_viewStack;
@@ -224,8 +303,12 @@ protected:
 
   UITransform m_guiTransform;
   UITransform m_finalTransform;
-  std::stack<UITransform> m_transforms;
-  RENDER_STEREO_VIEW m_stereoView = RENDER_STEREO_VIEW_OFF;
-  RENDER_STEREO_MODE m_stereoMode = RENDER_STEREO_MODE_OFF;
-  RENDER_STEREO_MODE m_nextStereoMode = RENDER_STEREO_MODE_OFF;
+  std::stack<UITransform, std::vector<UITransform>> m_transforms;
+  RenderStereoView m_stereoView = RenderStereoView::OFF;
+  RenderStereoMode m_stereoMode = RenderStereoMode::OFF;
+  RenderStereoMode m_nextStereoMode = RenderStereoMode::OFF;
+
+  bool m_isTransferPQ{false};
+  RENDER_ORDER m_renderOrder{RENDER_ORDER_ALL_BACK_TO_FRONT};
+  uint32_t m_layer{2};
 };

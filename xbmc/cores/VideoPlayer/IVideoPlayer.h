@@ -19,6 +19,7 @@
 #define VideoPlayer_SUBTITLE 3
 #define VideoPlayer_TELETEXT 4
 #define VideoPlayer_RDS      5
+#define VideoPlayer_ID3 6
 
 class CDVDMsg;
 class CDVDStreamInfo;
@@ -61,6 +62,8 @@ struct SStartMsg
   int player;
   double cachetime;
   double cachetotal;
+  // The worker is still starting and can send an updated timestamp.
+  bool timestampPending{false};
 };
 
 struct SStateMsg

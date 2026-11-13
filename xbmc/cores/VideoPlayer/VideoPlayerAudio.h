@@ -19,6 +19,7 @@
 #include "utils/BitstreamStats.h"
 
 #include <list>
+#include <mutex>
 #include <utility>
 
 
@@ -29,7 +30,10 @@ class CDVDAudioCodec;
 class CVideoPlayerAudio : public CThread, public IDVDStreamPlayerAudio
 {
 public:
-  CVideoPlayerAudio(CDVDClock* pClock, CDVDMessageQueue& parent, CProcessInfo &processInfo);
+  CVideoPlayerAudio(CDVDClock* pClock,
+                    CDVDMessageQueue& parent,
+                    CProcessInfo& processInfo,
+                    double messageQueueTimeSize);
   ~CVideoPlayerAudio() override;
 
   bool OpenStream(CDVDStreamInfo hints) override;
@@ -55,7 +59,11 @@ public:
   std::string GetPlayerInfo() override;
   int GetAudioChannels() override;
 
-  double GetCurrentPts() override { CSingleLock lock(m_info_section); return m_info.pts; }
+  double GetCurrentPts() override
+  {
+    std::unique_lock lock(m_info_section);
+    return m_info.pts;
+  }
 
   bool IsStalled() const override { return m_stalled;  }
   bool IsPassthrough() const override;
@@ -91,7 +99,7 @@ protected:
   bool m_stalled;
   bool m_paused;
   IDVDStreamPlayer::ESyncState m_syncState;
-  XbmcThreads::EndTime m_syncTimer;
+  XbmcThreads::EndTime<> m_syncTimer;
 
   int m_synctype;
   int m_prevsynctype;
@@ -110,5 +118,7 @@ protected:
   SInfo            m_info;
 
   bool m_displayReset = false;
+  unsigned int m_disconAdjustTimeMs = 50; // maximum sync-off before adjusting
+  int m_disconAdjustCounter = 0;
 };
 

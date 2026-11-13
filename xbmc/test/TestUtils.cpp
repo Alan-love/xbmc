@@ -44,7 +44,7 @@ public:
     if (m_ptempFilePath.empty())
       return false;
 
-    OpenForWrite(m_ptempFilePath.c_str(), true);
+    OpenForWrite(m_ptempFilePath, true);
     return true;
   }
   bool Delete()
@@ -52,10 +52,7 @@ public:
     Close();
     return CFile::Delete(m_ptempFilePath);
   };
-  std::string getTempFilePath() const
-  {
-    return m_ptempFilePath;
-  }
+  const std::string& getTempFilePath() const { return m_ptempFilePath; }
   std::string getTempFileDirectory() const
   {
     return URIUtils::GetDirectory(m_ptempFilePath);
@@ -89,7 +86,6 @@ bool CXBMCTestUtils::SetReferenceFileBasePath()
   /* Set xbmc, xbmcbin and home path */
   CSpecialProtocol::SetXBMCPath(xbmcPath);
   CSpecialProtocol::SetXBMCBinPath(xbmcPath);
-  CSpecialProtocol::SetHomePath(URIUtils::AddFileToFolder(xbmcPath, "portable_data"));
 
   return true;
 }
@@ -117,7 +113,7 @@ std::string CXBMCTestUtils::TempFilePath(XFILE::CFile const* const tempfile)
 {
   if (!tempfile)
     return "";
-  CTempFile const* const f = static_cast<CTempFile const* const>(tempfile);
+  CTempFile const* const f = static_cast<CTempFile const*>(tempfile);
   return f->getTempFilePath();
 }
 
@@ -125,7 +121,7 @@ std::string CXBMCTestUtils::TempFileDirectory(XFILE::CFile const* const tempfile
 {
   if (!tempfile)
     return "";
-  CTempFile const* const f = static_cast<CTempFile const* const>(tempfile);
+  CTempFile const* const f = static_cast<CTempFile const*>(tempfile);
   return f->getTempFileDirectory();
 }
 

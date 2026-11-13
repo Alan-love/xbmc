@@ -30,9 +30,10 @@ public:
   bool HasVisibleControls() override;
 
 protected:
-  EVENT_RESULT OnMouseEvent(const CPoint &point, const CMouseEvent &event) override;
+  EVENT_RESULT OnMouseEvent(const CPoint& point, const KODI::MOUSE::CMouseEvent& event) override;
 
 private:
+  void RenderPicture(bool clear, bool gui);
   void SeekChapter(int iChapter);
   void ToggleOSD();
   void TriggerOSD();

@@ -28,28 +28,12 @@ public:
   void Reset();
   uint8_t* GetBuffer();
   unsigned int GetSize() const;
-  static unsigned int GetOutputRate(CAEStreamInfo &info);
-  static CAEChannelInfo GetOutputChannelMap(CAEStreamInfo &info);
+  static unsigned int GetOutputRate(const CAEStreamInfo& info);
+  static CAEChannelInfo GetOutputChannelMap(const CAEStreamInfo& info);
 
 private:
-  void PackTrueHD(CAEStreamInfo &info, uint8_t* data, int size);
   void PackDTSHD(CAEStreamInfo &info, uint8_t* data, int size);
   void PackEAC3(CAEStreamInfo &info, uint8_t* data, int size);
-
-  /* we keep the trueHD and dtsHD buffers separate so that we can handle a fast stream switch */
-  std::vector<uint8_t> m_trueHD[2];
-
-  struct TrueHD
-  {
-    int prevFrameSize;
-    int samplesPerFrame;
-    int bufferFilled;
-    int bufferIndex;
-    uint16_t prevFrameTime;
-    uint8_t* outputBuffer;
-  };
-
-  TrueHD m_thd{};
 
   std::vector<uint8_t> m_dtsHD;
   unsigned int m_dtsHDSize = 0;
